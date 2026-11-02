@@ -1,0 +1,291 @@
+*inkline.nvim*		Quiet, fully customizable statusline
+
+==============================================================================
+CONTENTS						*inkline-contents*
+
+  1. Introduction ........................ |inkline-introduction|
+  2. Setup ............................... |inkline-setup|
+  3. Configuration ....................... |inkline-config|
+  4. Components .......................... |inkline-components|
+  5. Custom components ................... |inkline-custom|
+  6. Highlights .......................... |inkline-highlights|
+  7. API ................................. |inkline-api|
+  8. Health and tests .................... |inkline-health|
+
+==============================================================================
+1. INTRODUCTION					*inkline-introduction*
+
+inkline.nvim is a minimal statusline. It draws no powerline arrows and
+requires no patched font by default. Colors are derived from the active
+colorscheme, and the background is transparent unless configured otherwise.
+
+Default layout: >text
+
+   NORMAL  src/init.lua [+]            main  42:8
+<
+Requires Neovim 0.10 or newer. There are no required dependencies. gitsigns is
+used for the branch when present; otherwise a cached asynchronous `git`
+lookup is used.
+
+==============================================================================
+2. SETUP						*inkline-setup*
+
+The plugin applies the defaults automatically. To customize it: >lua
+
+  require('inkline').setup({
+    sections = {
+      left = { 'mode', 'filename' },
+      right = { 'branch', 'location' },
+    },
+  })
+<
+`setup()` may be called more than once; the last call wins.
+
+==============================================================================
+3. CONFIGURATION					*inkline-config*
+
+Lists (such as `sections.left`) replace the defaults, while maps (such as
+`mode.labels`) merge with them.
+
+All options and their defaults: >lua
+
+  {
+    transparent = true,
+    debug = false,
+
+    icons = {
+      modified = '[+]',
+      readonly = '[RO]',
+      branch = '',
+      truncate = '...',
+      diagnostics = { error = 'E', warn = 'W', info = 'I', hint = 'H' },
+      filetypes = {},
+    },
+
+    sections = {
+      left = { 'mode', 'filename' },
+      center = {},
+      right = { 'diagnostics', 'branch', 'location' },
+    },
+
+    separator = '  ',
+    padding = { left = 1, right = 1 },
+
+    mode = {
+      labels = {
+        n = 'NORMAL', i = 'INSERT', v = 'VISUAL', V = 'V-LINE',
+        ['\22'] = 'V-BLOCK', R = 'REPLACE', r = 'REPLACE',
+        c = 'COMMAND', t = 'TERMINAL', s = 'SELECT',
+        S = 'S-LINE', ['\19'] = 'S-BLOCK', ['!'] = 'SHELL',
+      },
+      uppercase = true,
+      short = false,
+    },
+
+    filename = {
+      max_width = 60,
+      full_path = false,
+      basename = false,
+      unnamed = '[No Name]',
+      modified = nil,
+      readonly = nil,
+    },
+
+    diagnostics = {
+      severities = { 'ERROR', 'WARN', 'INFO', 'HINT' },
+      style = 'short',         -- 'short' | 'long' | 'icons'
+      separator = ' ',
+      icons = nil,
+    },
+
+    branch = {
+      max_width = 32,
+      icon = nil,
+      gitsigns = true,
+    },
+
+    filetype = {
+      devicons = false,
+      icons = nil,
+      show_name = true,
+      max_width = 24,
+    },
+
+    location = {
+      format = '{line}:{col}',
+      show_percent = false,
+      percent_format = ' {percent}%',
+    },
+
+    progress = { format = '{percent}%' },
+    lsp = { max_width = 40, separator = ', ' },
+    macro = { format = 'REC @{register}' },
+    searchcount = { format = '[{current}/{total}]' },
+    selection = { format = '{chars} chars' },
+
+    disabled = {
+      filetypes = {},
+      buftypes = { 'prompt' },
+    },
+
+    inactive = { dim = true, highlight = 'InklineInactive' },
+
+    refresh = {
+      debounce = 60,
+      events = {
+        'ModeChanged', 'BufEnter', 'BufLeave', 'BufWritePost', 'FileType',
+        'DirChanged', 'WinEnter', 'WinLeave', 'WinResized', 'VimResized',
+        'DiagnosticChanged', 'LspProgress', 'CursorMoved', 'CursorMovedI',
+        'User',
+      },
+    },
+
+    highlights = {},
+    components = {},
+    condition = nil,
+  }
+<
+`condition` is a global visibility function: `function(ctx) -> boolean`.
+
+Per-item options override component options: >lua
+
+  sections = {
+    left = {
+      { 'filename', max_width = 40, basename = true },
+      {
+        'diagnostics',
+        severities = { 'ERROR', 'WARN' },
+        cond = function(ctx) return ctx.width >= 80 end,
+      },
+    },
+  }
+<
+==============================================================================
+4. COMPONENTS						*inkline-components*
+
+`mode`		Mode label. Options: `labels`, `uppercase`, `short`.
+`filename`	Path, modified marker, and readonly marker. Options:
+		`max_width`, `full_path`, `basename`, `unnamed`, `modified`,
+		`readonly`.
+`diagnostics`	Non-zero diagnostics. Options: `severities`, `style`,
+		`separator`, `icons`.
+`branch`	Git branch. Options: `max_width`, `icon`, `gitsigns`.
+`filetype`	Filetype name and optional icon. Options: `devicons`,
+		`icons`, `show_name`, `max_width`.
+`location`	Line and column. Options: `format`, `show_percent`,
+		`percent_format`.
+`progress`	Percentage through the file. Option: `format`.
+`lsp`		Attached LSP client names. Options: `max_width`, `separator`.
+`encoding`	Buffer encoding.
+`fileformat`	`unix`, `dos`, or `mac`.
+`macro`		Active recording register. Option: `format`.
+`searchcount`	Search match count. Option: `format`.
+`selection`	Visual selection size. Option: `format`.
+`custom`	Delegates to the `render` option; see |inkline-custom|.
+
+==============================================================================
+5. CUSTOM COMPONENTS					*inkline-custom*
+
+A section item may be a function called as `function(ctx, opts)`. It can
+return:
+
+  - `nil` or `false` to hide the item
+  - a string (uses `opts.hl`, default `Inkline`)
+  - `text, highlight_group` (two return values)
+  - `{ text = '...', hl = '...' }`
+  - a list of those segments
+
+Example: >lua
+
+  require('inkline').setup({
+    sections = {
+      right = {
+        {
+          function(ctx)
+            local clients = vim.lsp.get_clients({ bufnr = ctx.bufnr })
+            if #clients == 0 then return nil end
+            return ('%d LSP'):format(#clients), 'InklineLsp'
+          end,
+          hl = 'InklineLsp',
+        },
+        'location',
+      },
+    },
+  })
+<
+The context contains `bufnr`, `winid`, `bufname`, `filetype`, `buftype`,
+`width`, `is_active`, `mode` (`{ raw, name }`), and `config`.
+
+Replace a built-in component globally with `components`: >lua
+
+  require('inkline').setup({
+    components = {
+      mode = function(ctx)
+        return ctx.mode.raw:upper(), 'InklineMode' .. ctx.mode.name
+      end,
+    },
+  })
+<
+Use the `custom` component with `render` to attach options: >lua
+
+  require('inkline').setup({
+    custom = { text = 'hi', render = function(_, opts) return opts.text end },
+    sections = { right = { { 'custom', text = 'custom!' } } },
+  })
+<
+==============================================================================
+6. HIGHLIGHTS						*inkline-highlights*
+
+All groups can be overridden with the `highlights` option: >lua
+
+  require('inkline').setup({
+    highlights = {
+      InklineBranch = { fg = '#7aa2f7' },
+      InklineFile = { link = 'Title' },
+      InklineModeNormal = { fg = '#a9b1d6', bold = true },
+    },
+  })
+<
+Set a group to `false` to leave it untouched.
+
+Groups: `Inkline`, `InklineInactive`, `InklineDim`, `InklineFile`,
+`InklineModified`, `InklineReadonly`, `InklineSeparator`, `InklineBranch`,
+`InklineLocation`, `InklineProgress`, `InklineFiletype`, `InklineSearch`,
+`InklineSelection`, `InklineLsp`, `InklineMacro`,
+`InklineDiagnosticsError`, `InklineDiagnosticsWarn`,
+`InklineDiagnosticsInfo`, `InklineDiagnosticsHint`, and the
+`InklineMode{Normal,Insert,Visual,VisualLine,VisualBlock,Replace,Command,Terminal,Select,SelectLine,SelectBlock,Shell}`
+groups.
+
+Highlights are rebuilt on the `ColorScheme` event.
+
+==============================================================================
+7. API							*inkline-api*
+
+`require('inkline').setup(opts)`	Configure and install.	*inkline.setup()*
+`require('inkline').eval()`		Render for the current window.
+					*inkline.eval()*
+`require('inkline').redraw()`		Debounced redraw request.
+					*inkline.redraw()*
+`require('inkline').redraw_now()`	Immediate redraw.
+					*inkline.redraw_now()*
+`require('inkline').apply_statusline()`	Reinstall the expression.
+					*inkline.apply_statusline()*
+`require('inkline').is_setup()`		Whether setup has run.
+					*inkline.is_setup()*
+`require('inkline').get_config()`	The active configuration.
+					*inkline.get_config()*
+
+Command: `:InklineRedraw`			*inkline-command*
+
+==============================================================================
+8. HEALTH AND TESTS					*inkline-health*
+
+`:checkhealth inkline` reports missing requirements, statusline state,
+highlight state, and git/gitsigns availability.
+
+Run the headless test suite from the plugin root: >sh
+
+  nvim --headless -u NONE -l tests/run.lua
+<
+ vim:tw=78:ts=8:noet:ft=help:norl:
